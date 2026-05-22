@@ -1,0 +1,19 @@
+{
+  "name": "aiguanjia",
+  "version": "0.1.0",
+  "description": "AiGuanJia desktop app bootstrap",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "test": "rm -rf .test-dist && tsc --module CommonJS --target ES2022 --moduleResolution Node --esModuleInterop --strict --skipLibCheck --types node --outDir .test-dist tests/smoke/app_boot.test.ts src/main/main.ts src/shared/types.ts && node --test .test-dist/tests/smoke/app_boot.test.js",
+    "start": "npm run build && electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.15.20",
+    "electron": "^36.3.2",
+    "typescript": "^5.8.3"
+  }
+}
