@@ -10,11 +10,18 @@ test('buildTerminalCommand should map wezterm to start with cwd and passthrough 
   assert.deepEqual(cmd.args, ['start', '--cwd', '/repo', '--', 'codex', '--task', 'x']);
 });
 
-test('buildTerminalCommand should map iterm2 to open app args with shell wrapper', () => {
-  const cmd = buildTerminalCommand('iterm2', '/repo', 'codex', ['--task', 'x']);
+test('buildTerminalCommand should safely escape iterm2 shell command with spaces and special chars', () => {
+  const cmd = buildTerminalCommand('iterm2', "/repo team's app", "co'dex", ['--task', 'x y', '$(whoami)', '"quoted"']);
 
   assert.equal(cmd.program, 'open');
-  assert.deepEqual(cmd.args, ['-a', 'iTerm', '--args', 'sh', '-lc', 'cd /repo && codex --task x']);
+  assert.deepEqual(cmd.args, [
+    '-a',
+    'iTerm',
+    '--args',
+    'sh',
+    '-lc',
+    "cd '/repo team'\"'\"'s app' && 'co'\"'\"'dex' '--task' 'x y' '$(whoami)' '\"quoted\"'"
+  ]);
 });
 
 test('buildTerminalCommand should map gnome-terminal with working directory', () => {
@@ -22,10 +29,4 @@ test('buildTerminalCommand should map gnome-terminal with working directory', ()
 
   assert.equal(cmd.program, 'gnome-terminal');
   assert.deepEqual(cmd.args, ['--working-directory=/repo', '--', 'codex', '--task', 'x']);
-});
-
-test('buildTerminalCommand should throw for unsupported terminal type', () => {
-  assert.throws(() => {
-    buildTerminalCommand('unknown', '/repo', 'codex', ['--task', 'x']);
-  }, /Unsupported terminal type/);
 });

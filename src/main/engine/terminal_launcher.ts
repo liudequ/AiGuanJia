@@ -5,8 +5,12 @@ export interface LaunchCommand {
 
 export type TerminalType = 'wezterm' | 'iterm2' | 'gnome-terminal';
 
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 export function buildTerminalCommand(
-  terminalType: string,
+  terminalType: TerminalType,
   projectPath: string,
   command: string,
   args: string[]
@@ -19,19 +23,17 @@ export function buildTerminalCommand(
   }
 
   if (terminalType === 'iterm2') {
-    const shellCommand = ['cd', projectPath, '&&', command, ...args].join(' ');
+    const escapedCommand = [command, ...args].map(shellEscape).join(' ');
+    const shellCommand = `cd ${shellEscape(projectPath)} && ${escapedCommand}`;
+
     return {
       program: 'open',
       args: ['-a', 'iTerm', '--args', 'sh', '-lc', shellCommand]
     };
   }
 
-  if (terminalType === 'gnome-terminal') {
-    return {
-      program: 'gnome-terminal',
-      args: [`--working-directory=${projectPath}`, '--', command, ...args]
-    };
-  }
-
-  throw new Error(`Unsupported terminal type: ${terminalType}`);
+  return {
+    program: 'gnome-terminal',
+    args: [`--working-directory=${projectPath}`, '--', command, ...args]
+  };
 }
