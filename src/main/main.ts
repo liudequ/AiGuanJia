@@ -82,7 +82,3 @@ export function bootstrapApp(electronModule?: ElectronLike): void {
     }
   });
 }
-
-if (require.main === module) {
-  bootstrapApp();
-}

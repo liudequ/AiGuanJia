@@ -2,7 +2,7 @@
   "name": "aiguanjia",
   "version": "0.1.0",
   "description": "AiGuanJia desktop app bootstrap",
-  "main": "dist/main/main.js",
+  "main": "dist/main/index.js",
   "scripts": {
     "pretest": "node -e \"require('node:fs').rmSync('.test-dist',{recursive:true,force:true})\"",
     "test": "tsx --test",
@@ -16,5 +16,9 @@
     "@types/node": "^22.15.20",
     "electron": "^42.2.0",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "npm": "^11.15.0",
+    "start": "^5.1.0"
   }
 }
