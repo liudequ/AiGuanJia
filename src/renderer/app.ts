@@ -141,7 +141,7 @@ async function refreshProjectGroup(
   status: ElementLike,
   projectApi: ProjectApiLike,
   message?: string
-): Promise<{ actionButtons: ElementLike[] }> {
+): Promise<ProjectGroupRenderResult> {
   const state = await projectApi.getState();
   const rendered = renderProjectGroup(doc, root, state);
 
@@ -191,7 +191,18 @@ export async function initRenderer(
     return;
   }
 
-  if (api.projectApi && projectGroupRoot && projectGroupStatus) {
+  if (projectGroupRoot && projectGroupStatus && !api.projectApi) {
+    const rendered = renderProjectGroup(doc, projectGroupRoot, {
+      currentProjectPath: null,
+      projects: []
+    });
+    for (const button of rendered.actionButtons) {
+      button.addEventListener('click', async () => {
+        setStatus(projectGroupStatus, '项目功能暂不可用，请重启应用');
+      });
+    }
+    setStatus(projectGroupStatus, '未选择项目组');
+  } else if (api.projectApi && projectGroupRoot && projectGroupStatus) {
     const switchByPath = async (path: string): Promise<void> => {
       try {
         const prevState = await api.projectApi!.getState();
@@ -271,6 +282,14 @@ declare global {
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && window.flowApi) {
   void initRenderer(document as unknown as DocumentLike, {
     ...window.flowApi,
+    projectApi: window.projectApi
+  });
+} else if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  void initRenderer(document as unknown as DocumentLike, {
+    runFlow: async () => {
+      throw new Error('flowApi unavailable');
+    },
+    getRuns: async () => [],
     projectApi: window.projectApi
   });
 }

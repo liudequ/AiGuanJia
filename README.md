@@ -20,8 +20,9 @@ npm start
 ## 脚本说明
 
 - `npm test`: 运行 smoke tests，覆盖基础配置检查与主进程启动流程（基于 mock electron 的生命周期调用验证）。
-- `npm run build`: 编译 TypeScript 到 `dist/`，并复制渲染进程 `index.html` 与 `styles.css`。
+- `npm run build`: 编译 TypeScript 到 `dist/`，并复制渲染进程页面与样式资源（`index.html`、`styles.css`）。
 - `npm start`: 先构建再启动 Electron 应用。
+- `npm run test:e2e`: 当前桌面模式下无浏览器预览 E2E（占位命令）。
 - `./scripts/e2e-demo-flow.sh`: 快速验证脚本（非端到端），覆盖构建、关键产物存在性、以及构建后 `runFlow` 成功路径校验。
 
 ## v1 验收

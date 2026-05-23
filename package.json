@@ -7,7 +7,8 @@
     "pretest": "node -e \"require('node:fs').rmSync('.test-dist',{recursive:true,force:true})\"",
     "test": "tsx --test",
     "build": "tsc -p tsconfig.json && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/renderer',{recursive:true});fs.copyFileSync('src/renderer/index.html','dist/renderer/index.html');fs.copyFileSync('src/renderer/styles.css','dist/renderer/styles.css');\"",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "test:e2e": "node -e \"console.log('No browser preview E2E in desktop-only mode')\""
   },
   "keywords": [],
   "author": "",
