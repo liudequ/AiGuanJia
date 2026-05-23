@@ -1,6 +1,7 @@
 interface RunRecord {
   runId: string;
   result?: {
+    finalStatus?: string;
     status?: string;
   };
 }
@@ -16,8 +17,8 @@ interface ProjectItem {
 }
 
 interface ProjectState {
-  currentProject?: ProjectItem | null;
-  recentProjects?: ProjectItem[];
+  currentProjectPath?: string | null;
+  projects?: ProjectItem[];
 }
 
 interface PickDirectoryResult {
@@ -25,14 +26,10 @@ interface PickDirectoryResult {
   path?: string;
 }
 
-interface SelectPathResult {
-  outcome?: 'added' | 'switched' | 'exists' | 'failed';
-}
-
 interface ProjectApiLike {
   getState: () => Promise<ProjectState>;
   pickDirectory: () => Promise<PickDirectoryResult>;
-  selectPath: (path: string) => Promise<SelectPathResult | void>;
+  selectPath: (path: string) => Promise<ProjectState | void>;
 }
 
 interface ElementLike {
@@ -66,7 +63,7 @@ function renderRuns(doc: DocumentLike, runsList: ElementLike, runs: RunRecord[])
 
   const items = runs.map((run) => {
     const item = doc.createElement('li');
-    item.textContent = `${run.runId} - ${run.result?.status ?? 'UNKNOWN'}`;
+    item.textContent = `${run.runId} - ${run.result?.finalStatus ?? run.result?.status ?? 'UNKNOWN'}`;
     return item;
   });
 
@@ -78,7 +75,12 @@ function renderProjectGroup(
   root: ElementLike,
   state: ProjectState
 ): { actionButtons: ElementLike[] } {
-  if (!state.currentProject) {
+  const projects = state.projects ?? [];
+  const currentProject = state.currentProjectPath
+    ? projects.find((project) => project.path === state.currentProjectPath)
+    : undefined;
+
+  if (!currentProject) {
     const createButton = doc.createElement('button');
     createButton.textContent = '新建项目';
 
@@ -90,27 +92,26 @@ function renderProjectGroup(
   }
 
   const current = doc.createElement('p');
-  current.textContent = `当前项目：${state.currentProject.name} (${state.currentProject.path})`;
+  current.textContent = `当前项目：${currentProject.name} (${currentProject.path})`;
 
   const title = doc.createElement('p');
-  title.textContent = '最近项目：';
+  title.textContent = '项目列表：';
 
-  const recentList = doc.createElement('ul');
-  const recentProjects = state.recentProjects ?? [];
-  if (recentProjects.length === 0) {
+  const projectList = doc.createElement('ul');
+  if (projects.length === 0) {
     const empty = doc.createElement('li');
-    empty.textContent = '暂无最近项目';
-    recentList.replaceChildren(empty);
+    empty.textContent = '暂无项目';
+    projectList.replaceChildren(empty);
   } else {
-    const recentItems = recentProjects.map((project) => {
+    const projectItems = projects.map((project) => {
       const item = doc.createElement('li');
       item.textContent = `${project.name} - ${project.path}`;
       return item;
     });
-    recentList.replaceChildren(...recentItems);
+    projectList.replaceChildren(...projectItems);
   }
 
-  root.replaceChildren(current, title, recentList);
+  root.replaceChildren(current, title, projectList);
   return { actionButtons: [] };
 }
 
@@ -131,7 +132,7 @@ async function refreshProjectGroup(
 
   if (message) {
     setStatus(status, message);
-  } else if (state.currentProject) {
+  } else if (state.currentProjectPath) {
     setStatus(status, '已选择项目组');
   } else {
     setStatus(status, '未选择项目组');
@@ -157,36 +158,44 @@ export async function initRenderer(
   if (api.projectApi && projectGroupRoot && projectGroupStatus) {
     const pickAndSelect = async (): Promise<void> => {
       try {
+        const prevState = await api.projectApi!.getState();
         const picked = await api.projectApi!.pickDirectory();
         if (picked.canceled || !picked.path) {
           setStatus(projectGroupStatus, '已取消选择');
           return;
         }
 
-        const selected = await api.projectApi!.selectPath(picked.path);
-        const outcome = selected?.outcome ?? 'added';
-        let message = '添加项目成功';
-
-        if (outcome === 'exists') {
-          message = '项目已存在，已切换';
-        } else if (outcome === 'switched') {
+        const nextState = (await api.projectApi!.selectPath(picked.path)) ?? (await api.projectApi!.getState());
+        let message = '项目选择成功';
+        if (nextState.currentProjectPath === prevState.currentProjectPath) {
+          message = '已选择该项目';
+        } else if (!prevState.currentProjectPath && nextState.currentProjectPath) {
+          message = '添加并选择项目成功';
+        } else if (prevState.currentProjectPath && nextState.currentProjectPath) {
           message = '切换项目成功';
-        } else if (outcome === 'failed') {
-          setStatus(projectGroupStatus, '项目选择失败');
-          return;
         }
 
-        await refreshProjectGroup(doc, projectGroupRoot, projectGroupStatus, api.projectApi!, message);
+        const rendered = renderProjectGroup(doc, projectGroupRoot, nextState);
+        for (const button of rendered.actionButtons) {
+          button.addEventListener('click', async () => {
+            await pickAndSelect();
+          });
+        }
+        setStatus(projectGroupStatus, message);
       } catch {
         setStatus(projectGroupStatus, '项目选择失败');
       }
     };
 
-    const rendered = await refreshProjectGroup(doc, projectGroupRoot, projectGroupStatus, api.projectApi);
-    for (const button of rendered.actionButtons) {
-      button.addEventListener('click', async () => {
-        await pickAndSelect();
-      });
+    try {
+      const rendered = await refreshProjectGroup(doc, projectGroupRoot, projectGroupStatus, api.projectApi);
+      for (const button of rendered.actionButtons) {
+        button.addEventListener('click', async () => {
+          await pickAndSelect();
+        });
+      }
+    } catch {
+      setStatus(projectGroupStatus, '加载项目组失败');
     }
   }
 

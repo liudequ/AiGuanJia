@@ -91,7 +91,7 @@ test('initRenderer should bind run button and render runs list', async () => {
         flowTemplateId: 'flow-1',
         startedAt: '2026-05-23T08:00:00.000Z',
         result: {
-          status: 'SUCCEEDED',
+          finalStatus: 'SUCCEEDED',
           stepResults: []
         }
       };
@@ -104,7 +104,7 @@ test('initRenderer should bind run button and render runs list', async () => {
           flowTemplateId: 'flow-1',
           startedAt: '2026-05-23T08:00:00.000Z',
           result: {
-            status: 'SUCCEEDED',
+            finalStatus: 'SUCCEEDED',
             stepResults: []
           }
         }
@@ -154,11 +154,14 @@ test('initRenderer should render project-group empty state buttons', async () =>
     getRuns: async () => [],
     projectApi: {
       getState: async () => ({
-        currentProject: null,
-        recentProjects: []
+        currentProjectPath: null,
+        projects: []
       }),
       pickDirectory: async () => ({ canceled: true }),
-      selectPath: async () => ({ outcome: 'failed' as const })
+      selectPath: async () => ({
+        currentProjectPath: null,
+        projects: []
+      })
     }
   };
 
