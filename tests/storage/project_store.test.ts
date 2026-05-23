@@ -42,6 +42,8 @@ test('selectProjectByPath should add first project and persist pretty JSON with 
     assert.equal(state.projects.length, 1);
     assert.equal(state.projects[0]?.path, '/tmp/demo-project');
     assert.equal(state.projects[0]?.name, 'demo-project');
+    assert.equal(typeof state.projects[0]?.addedAt, 'string');
+    assert.match(state.projects[0]?.addedAt ?? '', /^\d{4}-\d{2}-\d{2}T/);
 
     const filePath = storageFile(homeDir);
     const raw = await readFile(filePath, 'utf8');
@@ -68,6 +70,7 @@ test('selectProjectByPath should deduplicate repeated path and only update lastO
     assert.equal(second.projects.length, 1);
     assert.equal(secondProject?.path, '/tmp/repeat-project');
     assert.equal(secondProject?.name, firstProject?.name);
+    assert.equal(secondProject?.addedAt, firstProject?.addedAt);
     assert.notEqual(secondProject?.lastOpenedAt, firstProject?.lastOpenedAt);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
@@ -95,6 +98,38 @@ test('getProjectState should throw when projects.json is corrupted', async () =>
 
     const store = createProjectStore({ homeDir });
     await assert.rejects(() => store.getProjectState(), /projects\.json/i);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('getProjectState should throw when project entry misses addedAt', async () => {
+  const homeDir = tempHomeDir();
+
+  try {
+    const filePath = storageFile(homeDir);
+    await mkdir(join(homeDir, '.aiguanjia'), { recursive: true });
+    writeFileSync(
+      filePath,
+      JSON.stringify(
+        {
+          currentProjectPath: '/tmp/bad-project',
+          projects: [
+            {
+              path: '/tmp/bad-project',
+              name: 'bad-project',
+              lastOpenedAt: new Date().toISOString()
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      { encoding: 'utf8', flag: 'w' }
+    );
+
+    const store = createProjectStore({ homeDir });
+    await assert.rejects(() => store.getProjectState(), /invalid project fields/i);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 export interface ProjectEntry {
   path: string;
   name: string;
+  addedAt: string;
   lastOpenedAt: string;
 }
 
@@ -53,14 +54,20 @@ function normalizeState(raw: unknown): ProjectState {
       throw new Error('invalid project entry');
     }
 
-    const project = item as { path?: unknown; name?: unknown; lastOpenedAt?: unknown };
-    if (typeof project.path !== 'string' || typeof project.name !== 'string' || typeof project.lastOpenedAt !== 'string') {
+    const project = item as { path?: unknown; name?: unknown; addedAt?: unknown; lastOpenedAt?: unknown };
+    if (
+      typeof project.path !== 'string' ||
+      typeof project.name !== 'string' ||
+      typeof project.addedAt !== 'string' ||
+      typeof project.lastOpenedAt !== 'string'
+    ) {
       throw new Error('invalid project fields');
     }
 
     return {
       path: project.path,
       name: project.name,
+      addedAt: project.addedAt,
       lastOpenedAt: project.lastOpenedAt
     };
   });
@@ -120,6 +127,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       const selected: ProjectEntry = {
         path: absPath,
         name: previous?.name ?? basename(absPath),
+        addedAt: previous?.addedAt ?? now,
         lastOpenedAt: now
       };
 
