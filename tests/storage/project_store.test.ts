@@ -45,14 +45,16 @@ test('getProjectState should initialize empty state when storage file does not e
 
 test('selectProjectByPath should add first project and persist pretty JSON with trailing newline', async () => {
   const homeDir = tempHomeDir();
+  const projectPath = join(homeDir, 'demo-project');
 
   try {
+    await mkdir(projectPath, { recursive: true });
     const store = createProjectStore({ homeDir });
-    const state = await store.selectProjectByPath('/tmp/demo-project');
+    const state = await store.selectProjectByPath(projectPath);
 
-    assert.equal(state.currentProjectPath, '/tmp/demo-project');
+    assert.equal(state.currentProjectPath, projectPath);
     assert.equal(state.projects.length, 1);
-    assert.equal(state.projects[0]?.path, '/tmp/demo-project');
+    assert.equal(state.projects[0]?.path, projectPath);
     assert.equal(state.projects[0]?.name, 'demo-project');
     assert.equal(typeof state.projects[0]?.addedAt, 'string');
     assert.match(state.projects[0]?.addedAt ?? '', /^\d{4}-\d{2}-\d{2}T/);
@@ -69,20 +71,22 @@ test('selectProjectByPath should add first project and persist pretty JSON with 
 
 test('selectProjectByPath should deduplicate repeated path and only update lastOpenedAt', async () => {
   const homeDir = tempHomeDir();
+  const projectPath = join(homeDir, 'repeat-project');
 
   try {
+    await mkdir(projectPath, { recursive: true });
     const store = createProjectStore({
       homeDir,
       now: createNowSequence(['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:01.000Z'])
     });
-    const first = await store.selectProjectByPath('/tmp/repeat-project');
+    const first = await store.selectProjectByPath(projectPath);
     const firstProject = first.projects[0];
 
-    const second = await store.selectProjectByPath('/tmp/repeat-project');
+    const second = await store.selectProjectByPath(projectPath);
     const secondProject = second.projects[0];
 
     assert.equal(second.projects.length, 1);
-    assert.equal(secondProject?.path, '/tmp/repeat-project');
+    assert.equal(secondProject?.path, projectPath);
     assert.equal(secondProject?.name, firstProject?.name);
     assert.equal(secondProject?.addedAt, firstProject?.addedAt);
     assert.notEqual(secondProject?.lastOpenedAt, firstProject?.lastOpenedAt);
@@ -151,21 +155,72 @@ test('getProjectState should throw when project entry misses addedAt', async () 
 
 test('getProjectState should return projects sorted by lastOpenedAt descending', async () => {
   const homeDir = tempHomeDir();
+  const projectAPath = join(homeDir, 'project-a');
+  const projectBPath = join(homeDir, 'project-b');
 
   try {
+    await mkdir(projectAPath, { recursive: true });
+    await mkdir(projectBPath, { recursive: true });
     const store = createProjectStore({
       homeDir,
       now: createNowSequence(['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:01.000Z'])
     });
-    await store.selectProjectByPath('/tmp/project-a');
-    await store.selectProjectByPath('/tmp/project-b');
+    await store.selectProjectByPath(projectAPath);
+    await store.selectProjectByPath(projectBPath);
 
     const state = await store.getProjectState();
 
     assert.equal(state.projects.length, 2);
-    assert.equal(state.projects[0]?.path, '/tmp/project-b');
-    assert.equal(state.projects[1]?.path, '/tmp/project-a');
-    assert.equal(state.currentProjectPath, '/tmp/project-b');
+    assert.equal(state.projects[0]?.path, projectBPath);
+    assert.equal(state.projects[1]?.path, projectAPath);
+    assert.equal(state.currentProjectPath, projectBPath);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('selectProjectByPath should reject non-existing path', async () => {
+  const homeDir = tempHomeDir();
+  const missingPath = join(homeDir, 'missing-project');
+
+  try {
+    const store = createProjectStore({ homeDir });
+    await assert.rejects(() => store.selectProjectByPath(missingPath), /does not exist/i);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('selectProjectByPath should reject non-directory path', async () => {
+  const homeDir = tempHomeDir();
+  const filePath = join(homeDir, 'not-a-directory.txt');
+
+  try {
+    writeFileSync(filePath, 'content', { encoding: 'utf8', flag: 'w' });
+    const store = createProjectStore({ homeDir });
+    await assert.rejects(() => store.selectProjectByPath(filePath), /must be a directory/i);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('selectProjectByPath should not pollute state when selection is rejected', async () => {
+  const homeDir = tempHomeDir();
+  const validPath = join(homeDir, 'valid-project');
+  const missingPath = join(homeDir, 'missing-project');
+
+  try {
+    await mkdir(validPath, { recursive: true });
+    const store = createProjectStore({ homeDir });
+    const before = await store.selectProjectByPath(validPath);
+    const beforeRaw = await readFile(storageFile(homeDir), 'utf8');
+
+    await assert.rejects(() => store.selectProjectByPath(missingPath), /does not exist/i);
+
+    const after = await store.getProjectState();
+    const afterRaw = await readFile(storageFile(homeDir), 'utf8');
+    assert.deepEqual(after, before);
+    assert.equal(afterRaw, beforeRaw);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

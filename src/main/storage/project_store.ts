@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -110,6 +110,34 @@ async function writeState(storagePath: string, state: ProjectState): Promise<voi
   await writeFile(storagePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }
 
+async function validateProjectDirectory(absPath: string): Promise<void> {
+  try {
+    await access(absPath, constants.F_OK);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Project path does not exist: ${absPath}. ${message}`);
+  }
+
+  let stats;
+  try {
+    stats = await stat(absPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to inspect project path: ${absPath}. ${message}`);
+  }
+
+  if (!stats.isDirectory()) {
+    throw new Error(`Project path must be a directory: ${absPath}`);
+  }
+
+  try {
+    await access(absPath, constants.R_OK | constants.X_OK);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Project path is not accessible: ${absPath}. ${message}`);
+  }
+}
+
 export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
   const homeDir = deps.homeDir ?? homedir();
   const now = deps.now ?? (() => new Date().toISOString());
@@ -124,6 +152,8 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       if (!isAbsolute(absPath)) {
         throw new Error(`Project path must be an absolute path: ${absPath}`);
       }
+
+      await validateProjectDirectory(absPath);
 
       const state = await readState(storagePath);
       const nowIsoString = now();
