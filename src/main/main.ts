@@ -20,7 +20,12 @@ export interface ElectronLike {
         contextIsolation: boolean;
         nodeIntegration: boolean;
       };
-    }): { loadFile: (file: string) => void };
+    }): {
+      loadFile: (file: string) => void;
+      webContents?: {
+        openDevTools: (options?: { mode?: 'detach' | 'right' | 'bottom' | 'undocked' }) => void;
+      };
+    };
     getAllWindows: () => unknown[];
   };
   ipcMain?: IpcMainLike;
@@ -56,6 +61,7 @@ function createWindow(electronModule: ElectronLike): void {
     }
   });
 
+  mainWindow.webContents?.openDevTools({ mode: 'detach' });
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 

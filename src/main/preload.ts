@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import { IPC_CHANNELS } from './ipc/handlers';
+const IPC_CHANNELS = {
+  flowRun: 'flow:run',
+  runsGet: 'runs:get',
+  projectsGetState: 'projects:getState',
+  projectsSelectPath: 'projects:selectPath',
+  projectsPickDirectory: 'projects:pickDirectory'
+} as const;
 
 contextBridge.exposeInMainWorld('appInfo', {
   name: 'AiGuanJia'

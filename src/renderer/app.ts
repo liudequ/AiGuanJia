@@ -123,7 +123,7 @@ function renderProjectGroup(
   }
 
   root.replaceChildren(current, title, projectList);
-  const pathActions = projectList.children.map((element, index) => ({
+  const pathActions = Array.from(projectList.children).map((element, index) => ({
     element,
     path: projects[index]?.path ?? ''
   }));
