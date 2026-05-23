@@ -20,7 +20,7 @@ npm start
 ## 脚本说明
 
 - `npm test`: 运行 smoke tests，覆盖基础配置检查与主进程启动流程（基于 mock electron 的生命周期调用验证）。
-- `npm run build`: 编译 TypeScript 到 `dist/`，并复制渲染进程 `index.html`。
+- `npm run build`: 编译 TypeScript 到 `dist/`，并复制渲染进程 `index.html` 与 `styles.css`。
 - `npm start`: 先构建再启动 Electron 应用。
 - `./scripts/e2e-demo-flow.sh`: 快速验证脚本（非端到端），覆盖构建、关键产物存在性、以及构建后 `runFlow` 成功路径校验。
 
@@ -32,6 +32,21 @@ npm start
 
 - 自动脚本不覆盖 UI→IPC 全链路；该链路请按手工步骤验收。
 - 手工验收步骤见：[docs/runbook/v1-manual-qa.md](docs/runbook/v1-manual-qa.md)
+
+## V1 范围
+
+已支持：
+- 串行流程执行与失败即中断（fail-fast）
+- 参数模板渲染（多占位符）
+- 终端类型命令映射（wezterm/iterm2/gnome-terminal）
+- 运行元数据与日志目录落盘
+- Electron 最小 UI（项目组/Agent/流程模板/运行中心）
+
+未支持：
+- 并行调度
+- 自动超时与重试
+- 自定义终端命令模板
+- 远程执行
 
 ## 目录结构
 
