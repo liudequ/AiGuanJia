@@ -5,7 +5,10 @@ const IPC_CHANNELS = {
   runsGet: 'runs:get',
   projectsGetState: 'projects:getState',
   projectsSelectPath: 'projects:selectPath',
-  projectsPickDirectory: 'projects:pickDirectory'
+  projectsPickDirectory: 'projects:pickDirectory',
+  agentsList: 'agents:list',
+  agentsAdd: 'agents:add',
+  agentsRemove: 'agents:remove'
 } as const;
 
 contextBridge.exposeInMainWorld('appInfo', {
@@ -21,4 +24,10 @@ contextBridge.exposeInMainWorld('projectApi', {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.projectsGetState),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.projectsPickDirectory),
   selectPath: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.projectsSelectPath, { path })
+});
+
+contextBridge.exposeInMainWorld('agentApi', {
+  list: () => ipcRenderer.invoke(IPC_CHANNELS.agentsList),
+  add: (payload?: unknown) => ipcRenderer.invoke(IPC_CHANNELS.agentsAdd, payload),
+  remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.agentsRemove, { id })
 });

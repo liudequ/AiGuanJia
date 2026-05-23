@@ -1,12 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { FlowTemplate } from '../../src/main/domain/models';
+import type { AppConfig, FlowTemplate } from '../../src/main/domain/models';
 import { IPC_CHANNELS, registerIpcHandlers } from '../../src/main/ipc/handlers';
+import type { AgentEntity } from '../../src/main/storage/agent_store';
 import type { ProjectState } from '../../src/main/storage/project_store';
 
 interface MockIpcMain {
   handle: (channel: string, listener: (...args: unknown[]) => unknown) => void;
+}
+
+type MockAgentEntity = AgentEntity & {
+  icon: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function createMockAgent(id: string, name: string): MockAgentEntity {
+  return {
+    id,
+    name,
+    icon: 'bot',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    command: 'codex',
+    argsTemplate: []
+  };
 }
 
 test('registerIpcHandlers should register flow and run history channels', () => {
@@ -24,6 +43,218 @@ test('registerIpcHandlers should register flow and run history channels', () => 
   assert.equal(handlers.has(IPC_CHANNELS.projectsGetState), true);
   assert.equal(handlers.has(IPC_CHANNELS.projectsSelectPath), true);
   assert.equal(handlers.has(IPC_CHANNELS.projectsPickDirectory), true);
+  assert.equal(handlers.has(IPC_CHANNELS.agentsList), true);
+  assert.equal(handlers.has(IPC_CHANNELS.agentsAdd), true);
+  assert.equal(handlers.has(IPC_CHANNELS.agentsRemove), true);
+});
+
+test('agents:add then agents:list should include new agent', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  type AgentInput = { name: string };
+  const agents: MockAgentEntity[] = [];
+
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [...agents],
+      addAgent: async (input: AgentInput) => {
+        const created = createMockAgent(`agent-${agents.length + 1}`, input.name);
+        agents.push(created);
+        return created;
+      },
+      removeAgent: async () => {}
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: []
+      }) as AppConfig
+  });
+
+  const addHandler = handlers.get(IPC_CHANNELS.agentsAdd);
+  const listHandler = handlers.get(IPC_CHANNELS.agentsList);
+  assert.ok(addHandler);
+  assert.ok(listHandler);
+
+  const created = await addHandler({}, { name: 'Alpha' });
+  const listed = await listHandler({});
+
+  assert.equal(created.id, 'agent-1');
+  assert.equal(created.name, 'Alpha');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, 'agent-1');
+});
+
+test('agents:add should accept undefined payload as empty input', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  const addInputs: unknown[] = [];
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [],
+      addAgent: async (input: unknown) => {
+        addInputs.push(input);
+        return createMockAgent('agent-1', '新建 Agent 1');
+      },
+      removeAgent: async () => {}
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: []
+      }) as AppConfig
+  });
+
+  const addHandler = handlers.get(IPC_CHANNELS.agentsAdd);
+  assert.ok(addHandler);
+
+  const created = await addHandler({}, undefined);
+  assert.equal(created.id, 'agent-1');
+  assert.deepEqual(addInputs, [{}]);
+});
+
+test('agents:add should reject invalid payload', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [],
+      addAgent: async () => createMockAgent('agent-1', 'Alpha'),
+      removeAgent: async () => {}
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: []
+      }) as AppConfig
+  });
+
+  const addHandler = handlers.get(IPC_CHANNELS.agentsAdd);
+  assert.ok(addHandler);
+
+  await assert.rejects(() => addHandler({}, null), /invalid payload/i);
+  await assert.rejects(() => addHandler({}, 1), /invalid payload/i);
+  await assert.rejects(() => addHandler({}, 'x'), /invalid payload/i);
+  await assert.rejects(() => addHandler({}, []), /invalid payload/i);
+});
+
+test('agents:remove should throw AGENT_IN_USE when referenced by any flow step', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  let removeCalled = false;
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [],
+      addAgent: async () => createMockAgent('unused', 'Unused'),
+      removeAgent: async () => {
+        removeCalled = true;
+      }
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: [
+          {
+            id: 'flow-1',
+            name: 'Flow One',
+            steps: [
+              { id: 's1', name: 'Step 1', agentProfileId: 'agent-1' },
+              { id: 's2', name: 'Step 2' }
+            ]
+          }
+        ]
+      }) as AppConfig
+  });
+
+  const removeHandler = handlers.get(IPC_CHANNELS.agentsRemove);
+  assert.ok(removeHandler);
+
+  await assert.rejects(() => removeHandler({}, { id: 'agent-1' }), /AGENT_IN_USE/);
+  assert.equal(removeCalled, false);
+});
+
+test('agents:remove should reject invalid payload', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [],
+      addAgent: async () => createMockAgent('unused', 'Unused'),
+      removeAgent: async () => {}
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: []
+      }) as AppConfig
+  });
+
+  const removeHandler = handlers.get(IPC_CHANNELS.agentsRemove);
+  assert.ok(removeHandler);
+
+  await assert.rejects(() => removeHandler({}, null), /invalid payload/i);
+  await assert.rejects(() => removeHandler({}, 1), /invalid payload/i);
+  await assert.rejects(() => removeHandler({}, ''), /invalid payload/i);
+  await assert.rejects(() => removeHandler({}, {}), /invalid payload/i);
+  await assert.rejects(() => removeHandler({}, { id: '' }), /invalid payload/i);
+  await assert.rejects(() => removeHandler({}, { id: '   ' }), /invalid payload/i);
+});
+
+test('agents:remove should return ok true and call removeAgent when not referenced', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  const removedIds: string[] = [];
+  registerIpcHandlers(ipcMain, {
+    agentStore: {
+      listAgents: async () => [],
+      addAgent: async () => createMockAgent('unused', 'Unused'),
+      removeAgent: async (id: string) => {
+        removedIds.push(id);
+      }
+    },
+    loadAppConfig: async () =>
+      ({
+        flowTemplates: [
+          {
+            id: 'flow-1',
+            name: 'Flow One',
+            steps: [{ id: 's1', name: 'Step 1', agentProfileId: 'agent-2' }]
+          }
+        ]
+      }) as AppConfig
+  });
+
+  const removeHandler = handlers.get(IPC_CHANNELS.agentsRemove);
+  assert.ok(removeHandler);
+
+  const result = await removeHandler({}, { id: 'agent-1' });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(removedIds, ['agent-1']);
 });
 
 test('flow:run should execute flow and getRuns should return run history', async () => {

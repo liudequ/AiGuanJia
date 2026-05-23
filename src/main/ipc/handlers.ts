@@ -1,5 +1,6 @@
-import { parseFlowTemplate, type FlowTemplate } from '../domain/models';
+import { parseFlowTemplate, type AppConfig, type FlowTemplate } from '../domain/models';
 import { runFlow, type FlowExecutionResult } from '../engine/execution_engine';
+import { createAgentStore, type AddAgentInput, type AgentEntity, type AgentStore } from '../storage/agent_store';
 import { createProjectStore, type ProjectState, type ProjectStore } from '../storage/project_store';
 
 export const IPC_CHANNELS = {
@@ -7,7 +8,10 @@ export const IPC_CHANNELS = {
   runsGet: 'runs:get',
   projectsGetState: 'projects:getState',
   projectsSelectPath: 'projects:selectPath',
-  projectsPickDirectory: 'projects:pickDirectory'
+  projectsPickDirectory: 'projects:pickDirectory',
+  agentsList: 'agents:list',
+  agentsAdd: 'agents:add',
+  agentsRemove: 'agents:remove'
 } as const;
 
 export interface IpcMainLike {
@@ -24,6 +28,8 @@ export interface FlowRunRecord {
 export interface HandlerDeps {
   executeFlow?: (template: FlowTemplate) => Promise<FlowExecutionResult>;
   projectStore?: ProjectStore;
+  agentStore?: AgentStore;
+  loadAppConfig?: () => Promise<AppConfig>;
   pickDirectory?: () => Promise<{ canceled: true } | { canceled: false; path: string }>;
 }
 
@@ -48,6 +54,8 @@ export function registerIpcHandlers(ipcMain: IpcMainLike, deps: HandlerDeps = {}
   const runs: FlowRunRecord[] = [];
   const executeFlow = deps.executeFlow ?? buildDefaultExecuteFlow();
   const projectStore = deps.projectStore ?? createProjectStore();
+  const agentStore = deps.agentStore ?? createAgentStore();
+  const loadAppConfig = deps.loadAppConfig ?? (async () => ({ projectGroups: [], agentProfiles: [], flowTemplates: [] }));
   const pickDirectory = deps.pickDirectory ?? buildDefaultPickDirectory;
 
   ipcMain.handle(IPC_CHANNELS.flowRun, async (_event: unknown, payload: unknown) => {
@@ -88,5 +96,38 @@ export function registerIpcHandlers(ipcMain: IpcMainLike, deps: HandlerDeps = {}
     }
 
     return { canceled: false as const, path: picked.path };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.agentsList, async (): Promise<AgentEntity[]> => agentStore.listAgents());
+
+  ipcMain.handle(IPC_CHANNELS.agentsAdd, async (_event: unknown, payload: unknown): Promise<AgentEntity> => {
+    const inputPayload: unknown = payload === undefined ? {} : payload;
+    if (!inputPayload || typeof inputPayload !== 'object' || Array.isArray(inputPayload)) {
+      throw new Error('invalid payload');
+    }
+
+    return agentStore.addAgent(inputPayload as AddAgentInput);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.agentsRemove, async (_event: unknown, payload: unknown): Promise<{ ok: true }> => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('invalid payload');
+    }
+
+    const { id } = payload as { id?: unknown };
+    if (typeof id !== 'string' || id.trim() === '') {
+      throw new Error('invalid payload');
+    }
+
+    const appConfig = await loadAppConfig();
+    const inUse = appConfig.flowTemplates.some((flowTemplate) =>
+      flowTemplate.steps.some((step) => step.agentProfileId === id)
+    );
+    if (inUse) {
+      throw new Error('AGENT_IN_USE');
+    }
+
+    await agentStore.removeAgent(id);
+    return { ok: true };
   });
 }

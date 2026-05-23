@@ -74,15 +74,24 @@ export const ipcRenderer = {
       pickDirectory: () => Promise<unknown>;
       selectPath: (projectPath: string) => Promise<unknown>;
     };
+    const agentApi = globalThis.__preloadTestState.exposed.agentApi as {
+      list: () => Promise<unknown>;
+      add: (payload?: unknown) => Promise<unknown>;
+      remove: (id: string) => Promise<unknown>;
+    };
 
     assert.ok(flowApi);
     assert.ok(projectApi);
+    assert.ok(agentApi);
 
     await flowApi.runFlow({ id: 'flow-1' });
     await flowApi.getRuns();
     await projectApi.getState();
     await projectApi.pickDirectory();
     await projectApi.selectPath('/tmp/project-a');
+    await agentApi.list();
+    await agentApi.add({ id: 'agent-1', name: 'Agent 1', prompt: 'hello' });
+    await agentApi.remove('agent-1');
 
     assert.deepEqual(globalThis.__preloadTestState.invokeCalls[0], {
       channel: IPC_CHANNELS.flowRun,
@@ -107,6 +116,21 @@ export const ipcRenderer = {
     assert.deepEqual(globalThis.__preloadTestState.invokeCalls[4], {
       channel: IPC_CHANNELS.projectsSelectPath,
       args: [{ path: '/tmp/project-a' }]
+    });
+
+    assert.deepEqual(globalThis.__preloadTestState.invokeCalls[5], {
+      channel: IPC_CHANNELS.agentsList,
+      args: []
+    });
+
+    assert.deepEqual(globalThis.__preloadTestState.invokeCalls[6], {
+      channel: IPC_CHANNELS.agentsAdd,
+      args: [{ id: 'agent-1', name: 'Agent 1', prompt: 'hello' }]
+    });
+
+    assert.deepEqual(globalThis.__preloadTestState.invokeCalls[7], {
+      channel: IPC_CHANNELS.agentsRemove,
+      args: [{ id: 'agent-1' }]
     });
   } finally {
     delete globalThis.__preloadTestState;

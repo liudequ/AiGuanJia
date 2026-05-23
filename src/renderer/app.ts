@@ -37,6 +37,17 @@ interface ProjectPathAction {
   path: string;
 }
 
+interface AgentEntity {
+  id: string;
+  name: string;
+}
+
+interface AgentApiLike {
+  list: () => Promise<AgentEntity[]>;
+  add: (payload?: unknown) => Promise<unknown>;
+  remove: (id: string) => Promise<unknown>;
+}
+
 interface ProjectGroupRenderResult {
   actionButtons: ElementLike[];
   pathActions: ProjectPathAction[];
@@ -177,15 +188,64 @@ function bindProjectGroupHandlers(
   }
 }
 
+function renderAgents(
+  doc: DocumentLike,
+  root: ElementLike,
+  agents: AgentEntity[]
+): { deleteActions: { element: ElementLike; id: string }[] } {
+  if (agents.length === 0) {
+    const empty = doc.createElement('p');
+    empty.textContent = '暂无 Agent，请先新增';
+    root.replaceChildren(empty);
+    return { deleteActions: [] };
+  }
+
+  const list = doc.createElement('ul');
+  const deleteActions: { element: ElementLike; id: string }[] = [];
+  const items = agents.map((agent) => {
+    const item = doc.createElement('li');
+    const label = doc.createElement('span');
+    label.textContent = `${agent.name} (${agent.id}) `;
+    const removeButton = doc.createElement('button');
+    removeButton.textContent = '删除';
+    item.replaceChildren(label, removeButton);
+    deleteActions.push({ element: removeButton, id: agent.id });
+    return item;
+  });
+  list.replaceChildren(...items);
+  root.replaceChildren(list);
+  return { deleteActions };
+}
+
+async function refreshAgents(
+  doc: DocumentLike,
+  root: ElementLike,
+  status: ElementLike,
+  agentApi: AgentApiLike,
+  onDelete: (id: string) => Promise<void>
+): Promise<void> {
+  const agents = await agentApi.list();
+  const rendered = renderAgents(doc, root, agents);
+  for (const action of rendered.deleteActions) {
+    action.element.addEventListener('click', async () => {
+      await onDelete(action.id);
+    });
+  }
+  setStatus(status, '就绪');
+}
+
 export async function initRenderer(
   doc: DocumentLike,
-  api: FlowApiLike & { projectApi?: ProjectApiLike }
+  api: FlowApiLike & { projectApi?: ProjectApiLike; agentApi?: AgentApiLike }
 ): Promise<void> {
   const runButton = doc.getElementById('run-flow-btn');
   const runsList = doc.getElementById('runs-list');
   const statusText = doc.getElementById('status-text');
   const projectGroupRoot = doc.getElementById('project-group-root');
   const projectGroupStatus = doc.getElementById('project-group-status');
+  const agentRoot = doc.getElementById('agent-root');
+  const agentStatus = doc.getElementById('agent-status');
+  const agentAddButton = doc.getElementById('agent-add-btn');
 
   if (!runButton || !runsList || !statusText) {
     return;
@@ -254,6 +314,43 @@ export async function initRenderer(
     }
   }
 
+  if (agentRoot && agentStatus) {
+    if (!api.agentApi || !agentAddButton) {
+      renderAgents(doc, agentRoot, []);
+      setStatus(agentStatus, 'Agent 功能暂不可用，请重启应用');
+    } else {
+      const removeAndRefresh = async (id: string): Promise<void> => {
+        try {
+          await api.agentApi!.remove(id);
+          await refreshAgents(doc, agentRoot, agentStatus, api.agentApi!, removeAndRefresh);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes('AGENT_IN_USE')) {
+            setStatus(agentStatus, '该 Agent 已被流程模板引用，无法删除');
+            return;
+          }
+          setStatus(agentStatus, '删除 Agent 失败');
+        }
+      };
+
+      agentAddButton.addEventListener('click', async () => {
+        try {
+          await api.agentApi!.add();
+          await refreshAgents(doc, agentRoot, agentStatus, api.agentApi!, removeAndRefresh);
+        } catch {
+          setStatus(agentStatus, '新增 Agent 失败');
+        }
+      });
+
+      try {
+        await refreshAgents(doc, agentRoot, agentStatus, api.agentApi, removeAndRefresh);
+      } catch {
+        renderAgents(doc, agentRoot, []);
+        setStatus(agentStatus, '加载 Agent 列表失败');
+      }
+    }
+  }
+
   runButton.addEventListener('click', async () => {
     try {
       await api.runFlow(DEFAULT_TEMPLATE);
@@ -276,13 +373,15 @@ declare global {
   interface Window {
     flowApi?: FlowApiLike;
     projectApi?: ProjectApiLike;
+    agentApi?: AgentApiLike;
   }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && window.flowApi) {
   void initRenderer(document as unknown as DocumentLike, {
     ...window.flowApi,
-    projectApi: window.projectApi
+    projectApi: window.projectApi,
+    agentApi: window.agentApi
   });
 } else if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   void initRenderer(document as unknown as DocumentLike, {
@@ -290,6 +389,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && window.f
       throw new Error('flowApi unavailable');
     },
     getRuns: async () => [],
-    projectApi: window.projectApi
+    projectApi: window.projectApi,
+    agentApi: window.agentApi
   });
 }

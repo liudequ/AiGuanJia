@@ -65,6 +65,9 @@ test('renderer page should include four v1 sections', () => {
   assert.match(html, /流程模板/);
   assert.match(html, /运行中心/);
   assert.match(html, /project-group-root/);
+  assert.match(html, /agent-add-btn/);
+  assert.match(html, /agent-status/);
+  assert.match(html, /agent-root/);
 });
 
 test('build script should copy index.html and styles.css to dist/renderer', () => {
@@ -215,4 +218,133 @@ test('initRenderer should switch current project when clicking project list item
 
   assert.deepEqual(selectedPaths, ['/tmp/project-b']);
   assert.equal(projectGroupStatus.textContent, '切换项目成功');
+});
+
+test('initRenderer should render agent empty state on initial load', async () => {
+  const doc = new FakeDocument();
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+  doc.register('agent-add-btn', 'button');
+  const agentStatus = doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [],
+      add: async () => ({}),
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  assert.equal(agentRoot.children.length, 1);
+  assert.equal(agentRoot.children[0].textContent, '暂无 Agent，请先新增');
+  assert.equal(agentStatus.textContent, '就绪');
+});
+
+test('initRenderer should show new agent item after add', async () => {
+  const doc = new FakeDocument();
+  const addButton = doc.register('agent-add-btn', 'button');
+  const agentStatus = doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const agents: Array<{ id: string; name: string }> = [];
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [...agents],
+      add: async () => {
+        agents.push({ id: 'agent-1', name: 'Agent 1' });
+        return agents[0];
+      },
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+  await addButton.click();
+
+  assert.equal(agentRoot.children.length, 1);
+  const list = agentRoot.children[0];
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].children[0].textContent, 'Agent 1 (agent-1) ');
+  assert.equal(agentStatus.textContent, '就绪');
+});
+
+test('initRenderer should reduce agent list after delete success', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  const agentStatus = doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const agents: Array<{ id: string; name: string }> = [
+    { id: 'agent-1', name: 'Agent 1' },
+    { id: 'agent-2', name: 'Agent 2' }
+  ];
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [...agents],
+      add: async () => ({}),
+      remove: async (id: string) => {
+        const idx = agents.findIndex((item) => item.id === id);
+        if (idx >= 0) {
+          agents.splice(idx, 1);
+        }
+        return { ok: true };
+      }
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  const listBefore = agentRoot.children[0];
+  assert.equal(listBefore.children.length, 2);
+  await listBefore.children[0].children[1].click();
+
+  const listAfter = agentRoot.children[0];
+  assert.equal(listAfter.children.length, 1);
+  assert.equal(listAfter.children[0].children[0].textContent, 'Agent 2 (agent-2) ');
+  assert.equal(agentStatus.textContent, '就绪');
+});
+
+test('initRenderer should show AGENT_IN_USE message when delete fails with reference error', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  const agentStatus = doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [{ id: 'agent-1', name: 'Agent 1' }],
+      add: async () => ({}),
+      remove: async () => {
+        throw new Error('AGENT_IN_USE');
+      }
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  const list = agentRoot.children[0];
+  await list.children[0].children[1].click();
+
+  assert.equal(agentStatus.textContent, '该 Agent 已被流程模板引用，无法删除');
 });
