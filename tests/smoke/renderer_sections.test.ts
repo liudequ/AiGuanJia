@@ -9,12 +9,26 @@ class FakeElement {
   public textContent = '';
   public innerHTML = '';
   public disabled = false;
+  public children: FakeElement[] = [];
+  public readonly tagName: string;
   private listeners = new Map<string, Array<() => void | Promise<void>>>();
+
+  constructor(tagName = 'div') {
+    this.tagName = tagName.toUpperCase();
+  }
 
   addEventListener(event: string, handler: () => void | Promise<void>): void {
     const current = this.listeners.get(event) ?? [];
     current.push(handler);
     this.listeners.set(event, current);
+  }
+
+  appendChild(child: FakeElement): void {
+    this.children.push(child);
+  }
+
+  replaceChildren(...children: FakeElement[]): void {
+    this.children = children;
   }
 
   async click(): Promise<void> {
@@ -32,8 +46,12 @@ class FakeDocument {
     return this.elements.get(id) ?? null;
   }
 
-  register(id: string): FakeElement {
-    const element = new FakeElement();
+  createElement(tagName: string): FakeElement {
+    return new FakeElement(tagName);
+  }
+
+  register(id: string, tagName?: string): FakeElement {
+    const element = new FakeElement(tagName);
     this.elements.set(id, element);
     return element;
   }
@@ -48,10 +66,18 @@ test('renderer page should include four v1 sections', () => {
   assert.match(html, /运行中心/);
 });
 
+test('build script should copy index.html and styles.css to dist/renderer', () => {
+  const pkg = readFileSync(join(process.cwd(), 'package.json'), 'utf-8');
+
+  assert.match(pkg, /copyFileSync\('src\/renderer\/index\.html','dist\/renderer\/index\.html'\)/);
+  assert.match(pkg, /copyFileSync\('src\/renderer\/styles\.css','dist\/renderer\/styles\.css'\)/);
+});
+
 test('initRenderer should bind run button and render runs list', async () => {
   const doc = new FakeDocument();
-  const runButton = doc.register('run-flow-btn');
-  const runsList = doc.register('runs-list');
+  const runButton = doc.register('run-flow-btn', 'button');
+  const runsList = doc.register('runs-list', 'ul');
+  const statusText = doc.register('status-text', 'p');
 
   let runFlowCalls = 0;
   let getRunsCalls = 0;
@@ -90,6 +116,26 @@ test('initRenderer should bind run button and render runs list', async () => {
 
   assert.equal(runFlowCalls, 1);
   assert.equal(getRunsCalls, 2);
-  assert.match(runsList.innerHTML, /run-1/);
-  assert.match(runsList.innerHTML, /SUCCEEDED/);
+  assert.equal(runsList.children.length, 1);
+  assert.equal(runsList.children[0].textContent, 'run-1 - SUCCEEDED');
+  assert.equal(statusText.textContent, '运行成功');
+});
+
+test('initRenderer should show error text when runFlow fails', async () => {
+  const doc = new FakeDocument();
+  const runButton = doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  const statusText = doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => {
+      throw new Error('boom');
+    },
+    getRuns: async () => []
+  };
+
+  await initRenderer(doc as never, api);
+  await runButton.click();
+
+  assert.equal(statusText.textContent, '运行失败，请稍后重试');
 });
