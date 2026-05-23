@@ -22,6 +22,15 @@ npm start
 - `npm test`: 运行 smoke tests，覆盖基础配置检查与主进程启动流程（基于 mock electron 的生命周期调用验证）。
 - `npm run build`: 编译 TypeScript 到 `dist/`，并复制渲染进程 `index.html`。
 - `npm start`: 先构建再启动 Electron 应用。
+- `./scripts/e2e-demo-flow.sh`: 执行最小端到端验收脚本（测试 + 构建 + 关键产物与流程执行校验）。
+
+## v1 验收
+
+```bash
+./scripts/e2e-demo-flow.sh
+```
+
+- 手工验收步骤见：[docs/runbook/v1-manual-qa.md](docs/runbook/v1-manual-qa.md)
 
 ## 目录结构
 
