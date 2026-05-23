@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { APP_NAME, type BootstrapConfig } from '../shared/types';
+import { registerIpcHandlers, type IpcMainLike } from './ipc/handlers';
 
 type ElectronModule = typeof import('electron');
 
@@ -22,6 +23,7 @@ export interface ElectronLike {
     }): { loadFile: (file: string) => void };
     getAllWindows: () => unknown[];
   };
+  ipcMain?: IpcMainLike;
 }
 
 function getElectron(): ElectronModule {
@@ -59,6 +61,10 @@ function createWindow(electronModule: ElectronLike): void {
 
 export function bootstrapApp(electronModule?: ElectronLike): void {
   const runtime = electronModule ?? (getElectron() as unknown as ElectronLike);
+
+  if (runtime.ipcMain) {
+    registerIpcHandlers(runtime.ipcMain);
+  }
 
   runtime.app.whenReady().then(() => {
     createWindow(runtime);
