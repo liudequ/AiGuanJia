@@ -32,8 +32,19 @@ interface ProjectApiLike {
   selectPath: (path: string) => Promise<ProjectState | void>;
 }
 
+interface ProjectPathAction {
+  element: ElementLike;
+  path: string;
+}
+
+interface ProjectGroupRenderResult {
+  actionButtons: ElementLike[];
+  pathActions: ProjectPathAction[];
+}
+
 interface ElementLike {
   textContent: string;
+  children: ElementLike[];
   replaceChildren: (...children: ElementLike[]) => void;
   addEventListener: (event: 'click', handler: () => Promise<void>) => void;
 }
@@ -74,7 +85,7 @@ function renderProjectGroup(
   doc: DocumentLike,
   root: ElementLike,
   state: ProjectState
-): { actionButtons: ElementLike[] } {
+): ProjectGroupRenderResult {
   const projects = state.projects ?? [];
   const currentProject = state.currentProjectPath
     ? projects.find((project) => project.path === state.currentProjectPath)
@@ -88,7 +99,7 @@ function renderProjectGroup(
     existingButton.textContent = '本地已有项目';
 
     root.replaceChildren(createButton, existingButton);
-    return { actionButtons: [createButton, existingButton] };
+    return { actionButtons: [createButton, existingButton], pathActions: [] };
   }
 
   const current = doc.createElement('p');
@@ -112,7 +123,11 @@ function renderProjectGroup(
   }
 
   root.replaceChildren(current, title, projectList);
-  return { actionButtons: [] };
+  const pathActions = projectList.children.map((element, index) => ({
+    element,
+    path: projects[index]?.path ?? ''
+  }));
+  return { actionButtons: [], pathActions };
 }
 
 async function refreshRuns(doc: DocumentLike, runsList: ElementLike, api: FlowApiLike): Promise<void> {
@@ -141,6 +156,27 @@ async function refreshProjectGroup(
   return rendered;
 }
 
+function bindProjectGroupHandlers(
+  rendered: ProjectGroupRenderResult,
+  onPick: () => Promise<void>,
+  onSelectPath: (path: string) => Promise<void>
+): void {
+  for (const button of rendered.actionButtons) {
+    button.addEventListener('click', async () => {
+      await onPick();
+    });
+  }
+
+  for (const action of rendered.pathActions) {
+    if (!action.path) {
+      continue;
+    }
+    action.element.addEventListener('click', async () => {
+      await onSelectPath(action.path);
+    });
+  }
+}
+
 export async function initRenderer(
   doc: DocumentLike,
   api: FlowApiLike & { projectApi?: ProjectApiLike }
@@ -156,6 +192,22 @@ export async function initRenderer(
   }
 
   if (api.projectApi && projectGroupRoot && projectGroupStatus) {
+    const switchByPath = async (path: string): Promise<void> => {
+      try {
+        const prevState = await api.projectApi!.getState();
+        const nextState = (await api.projectApi!.selectPath(path)) ?? (await api.projectApi!.getState());
+        const rendered = renderProjectGroup(doc, projectGroupRoot, nextState);
+        bindProjectGroupHandlers(rendered, pickAndSelect, switchByPath);
+        if (nextState.currentProjectPath === prevState.currentProjectPath) {
+          setStatus(projectGroupStatus, '已选择该项目');
+          return;
+        }
+        setStatus(projectGroupStatus, '切换项目成功');
+      } catch {
+        setStatus(projectGroupStatus, '项目切换失败');
+      }
+    };
+
     const pickAndSelect = async (): Promise<void> => {
       try {
         const prevState = await api.projectApi!.getState();
@@ -176,11 +228,7 @@ export async function initRenderer(
         }
 
         const rendered = renderProjectGroup(doc, projectGroupRoot, nextState);
-        for (const button of rendered.actionButtons) {
-          button.addEventListener('click', async () => {
-            await pickAndSelect();
-          });
-        }
+        bindProjectGroupHandlers(rendered, pickAndSelect, switchByPath);
         setStatus(projectGroupStatus, message);
       } catch {
         setStatus(projectGroupStatus, '项目选择失败');
@@ -189,11 +237,7 @@ export async function initRenderer(
 
     try {
       const rendered = await refreshProjectGroup(doc, projectGroupRoot, projectGroupStatus, api.projectApi);
-      for (const button of rendered.actionButtons) {
-        button.addEventListener('click', async () => {
-          await pickAndSelect();
-        });
-      }
+      bindProjectGroupHandlers(rendered, pickAndSelect, switchByPath);
     } catch {
       setStatus(projectGroupStatus, '加载项目组失败');
     }

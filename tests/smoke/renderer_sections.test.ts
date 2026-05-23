@@ -171,3 +171,48 @@ test('initRenderer should render project-group empty state buttons', async () =>
   assert.equal(projectGroupRoot.children[0].textContent, '新建项目');
   assert.equal(projectGroupRoot.children[1].textContent, '本地已有项目');
 });
+
+test('initRenderer should switch current project when clicking project list item', async () => {
+  const doc = new FakeDocument();
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+  const projectGroupRoot = doc.register('project-group-root', 'div');
+  const projectGroupStatus = doc.register('project-group-status', 'p');
+
+  const projects = [
+    { name: 'project-a', path: '/tmp/project-a' },
+    { name: 'project-b', path: '/tmp/project-b' }
+  ];
+  let currentProjectPath = '/tmp/project-a';
+  const selectedPaths: string[] = [];
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    projectApi: {
+      getState: async () => ({
+        currentProjectPath,
+        projects
+      }),
+      pickDirectory: async () => ({ canceled: true }),
+      selectPath: async (path: string) => {
+        selectedPaths.push(path);
+        currentProjectPath = path;
+        return {
+          currentProjectPath,
+          projects
+        };
+      }
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  const projectList = projectGroupRoot.children[2];
+  assert.ok(projectList);
+  await projectList.children[1].click();
+
+  assert.deepEqual(selectedPaths, ['/tmp/project-b']);
+  assert.equal(projectGroupStatus.textContent, '切换项目成功');
+});
