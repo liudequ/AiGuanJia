@@ -15,6 +15,18 @@ function storageFile(homeDir: string): string {
   return join(homeDir, '.aiguanjia', 'projects.json');
 }
 
+function createNowSequence(values: string[]): () => string {
+  let index = 0;
+  return () => {
+    const value = values[index];
+    if (!value) {
+      throw new Error('No more now() values in test sequence');
+    }
+    index += 1;
+    return value;
+  };
+}
+
 test('getProjectState should initialize empty state when storage file does not exist', async () => {
   const homeDir = tempHomeDir();
 
@@ -59,11 +71,13 @@ test('selectProjectByPath should deduplicate repeated path and only update lastO
   const homeDir = tempHomeDir();
 
   try {
-    const store = createProjectStore({ homeDir });
+    const store = createProjectStore({
+      homeDir,
+      now: createNowSequence(['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:01.000Z'])
+    });
     const first = await store.selectProjectByPath('/tmp/repeat-project');
     const firstProject = first.projects[0];
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
     const second = await store.selectProjectByPath('/tmp/repeat-project');
     const secondProject = second.projects[0];
 
@@ -139,9 +153,11 @@ test('getProjectState should return projects sorted by lastOpenedAt descending',
   const homeDir = tempHomeDir();
 
   try {
-    const store = createProjectStore({ homeDir });
+    const store = createProjectStore({
+      homeDir,
+      now: createNowSequence(['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:01.000Z'])
+    });
     await store.selectProjectByPath('/tmp/project-a');
-    await new Promise((resolve) => setTimeout(resolve, 5));
     await store.selectProjectByPath('/tmp/project-b');
 
     const state = await store.getProjectState();
@@ -150,6 +166,18 @@ test('getProjectState should return projects sorted by lastOpenedAt descending',
     assert.equal(state.projects[0]?.path, '/tmp/project-b');
     assert.equal(state.projects[1]?.path, '/tmp/project-a');
     assert.equal(state.currentProjectPath, '/tmp/project-b');
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('getProjectState should throw on access errors other than ENOENT', async () => {
+  const homeDir = tempHomeDir();
+
+  try {
+    writeFileSync(join(homeDir, '.aiguanjia'), 'not-a-directory', { encoding: 'utf8', flag: 'w' });
+    const store = createProjectStore({ homeDir });
+    await assert.rejects(() => store.getProjectState(), /Failed to access projects\.json/i);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

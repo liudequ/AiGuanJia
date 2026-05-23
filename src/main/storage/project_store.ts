@@ -22,6 +22,7 @@ export interface ProjectStore {
 
 export interface ProjectStoreDeps {
   homeDir?: string;
+  now?: () => string;
 }
 
 function getStoragePath(homeDir: string): string {
@@ -81,11 +82,16 @@ function normalizeState(raw: unknown): ProjectState {
 async function readState(storagePath: string): Promise<ProjectState> {
   try {
     await access(storagePath, constants.F_OK);
-  } catch {
-    return {
-      currentProjectPath: null,
-      projects: []
-    };
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return {
+        currentProjectPath: null,
+        projects: []
+      };
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to access projects.json at ${storagePath}: ${message}`);
   }
 
   const rawContent = await readFile(storagePath, 'utf8');
@@ -106,6 +112,7 @@ async function writeState(storagePath: string, state: ProjectState): Promise<voi
 
 export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
   const homeDir = deps.homeDir ?? homedir();
+  const now = deps.now ?? (() => new Date().toISOString());
   const storagePath = getStoragePath(homeDir);
 
   return {
@@ -119,7 +126,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       }
 
       const state = await readState(storagePath);
-      const now = new Date().toISOString();
+      const nowIsoString = now();
 
       const others = state.projects.filter((project) => project.path !== absPath);
       const previous = state.projects.find((project) => project.path === absPath);
@@ -127,8 +134,8 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       const selected: ProjectEntry = {
         path: absPath,
         name: previous?.name ?? basename(absPath),
-        addedAt: previous?.addedAt ?? now,
-        lastOpenedAt: now
+        addedAt: previous?.addedAt ?? nowIsoString,
+        lastOpenedAt: nowIsoString
       };
 
       const nextState: ProjectState = {
