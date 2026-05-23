@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f3f5f8;
+  color: #1f2937;
+}
+
+.layout {
+  max-width: 920px;
+  margin: 24px auto;
+  padding: 0 16px 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+#run-flow-btn {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+#runs-list {
+  margin-top: 12px;
+  padding-left: 20px;
+}
