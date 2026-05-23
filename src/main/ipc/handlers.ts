@@ -64,7 +64,7 @@ export function registerIpcHandlers(ipcMain: IpcMainLike, deps: HandlerDeps = {}
     return runRecord;
   });
 
-  ipcMain.handle(IPC_CHANNELS.runsGet, async () => runs);
+  ipcMain.handle(IPC_CHANNELS.runsGet, async () => [...runs]);
 
   ipcMain.handle(IPC_CHANNELS.projectsGetState, async (): Promise<ProjectState> => projectStore.getProjectState());
 

@@ -74,6 +74,51 @@ test('flow:run should execute flow and getRuns should return run history', async
   assert.equal(runs[0].result.executedSteps, 1);
 });
 
+test('runs:get should return isolated array copy', async () => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const ipcMain: MockIpcMain = {
+    handle: (channel, listener) => {
+      handlers.set(channel, listener);
+    }
+  };
+
+  const flowTemplate: FlowTemplate = {
+    id: 'flow-1',
+    name: 'Demo Flow',
+    steps: [{ id: 'step-1', name: 'Step One' }]
+  };
+
+  registerIpcHandlers(ipcMain, {
+    executeFlow: async () => ({
+      finalStatus: 'SUCCEEDED',
+      executedSteps: 1,
+      stepResults: [
+        {
+          stepId: 'step-1',
+          status: 'SUCCEEDED',
+          exitCode: 0,
+          output: 'ok'
+        }
+      ]
+    })
+  });
+
+  const runFlowHandler = handlers.get(IPC_CHANNELS.flowRun);
+  const getRunsHandler = handlers.get(IPC_CHANNELS.runsGet);
+  assert.ok(runFlowHandler);
+  assert.ok(getRunsHandler);
+
+  await runFlowHandler({}, flowTemplate);
+
+  const firstRead = await getRunsHandler({});
+  assert.equal(firstRead.length, 1);
+  firstRead.pop();
+  assert.equal(firstRead.length, 0);
+
+  const secondRead = await getRunsHandler({});
+  assert.equal(secondRead.length, 1);
+});
+
 test('projects:selectPath should call projectStore.selectProjectByPath with valid path', async () => {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   const ipcMain: MockIpcMain = {
@@ -137,6 +182,9 @@ test('projects:selectPath should reject invalid payload.path', async () => {
   const selectPathHandler = handlers.get(IPC_CHANNELS.projectsSelectPath);
   assert.ok(selectPathHandler);
 
+  await assert.rejects(() => selectPathHandler({}, null), /non-empty string/i);
+  await assert.rejects(() => selectPathHandler({}, 123), /non-empty string/i);
+  await assert.rejects(() => selectPathHandler({}, 'abc'), /non-empty string/i);
   await assert.rejects(() => selectPathHandler({}, {}), /non-empty string/i);
   await assert.rejects(() => selectPathHandler({}, { path: '' }), /non-empty string/i);
   await assert.rejects(() => selectPathHandler({}, { path: '   ' }), /non-empty string/i);
