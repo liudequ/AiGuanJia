@@ -19,6 +19,23 @@ function assertSafeId(value: string, fieldName: 'runId' | 'stepId'): void {
   }
 }
 
+function assertValidStepIndex(stepIndex: number): void {
+  if (!Number.isInteger(stepIndex) || stepIndex < 0) {
+    throw new Error('invalid stepIndex: must be a non-negative integer');
+  }
+}
+
+async function ensureFileInitialized(filePath: string): Promise<void> {
+  try {
+    await writeFile(filePath, '', { flag: 'wx' });
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'EEXIST') {
+      throw error;
+    }
+  }
+}
+
 export async function createRunLayout(
   projectPath: string,
   runId: string,
@@ -27,6 +44,7 @@ export async function createRunLayout(
 ): Promise<RunLayout> {
   assertSafeId(runId, 'runId');
   assertSafeId(stepId, 'stepId');
+  assertValidStepIndex(stepIndex);
 
   const runDir = join(projectPath, '.aiguanjia', 'runs', runId);
   const flowRunFile = join(runDir, 'flow-run.json');
@@ -39,7 +57,7 @@ export async function createRunLayout(
   await mkdir(stepDir, { recursive: true });
 
   await Promise.all([
-    writeFile(flowRunFile, '', { flag: 'w' }),
+    ensureFileInitialized(flowRunFile),
     writeFile(stdoutLogFile, '', { flag: 'a' }),
     writeFile(stderrLogFile, '', { flag: 'a' }),
     writeFile(stepRunFile, '', { flag: 'w' }),

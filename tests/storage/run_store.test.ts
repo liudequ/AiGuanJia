@@ -62,7 +62,19 @@ test('createRunLayout should reject invalid runId and stepId', async () => {
   }
 });
 
-test('createRunLayout should overwrite metadata files while keeping logs append-friendly', async () => {
+test('createRunLayout should reject invalid stepIndex', async () => {
+  const projectPath = tempProjectPath();
+
+  try {
+    await assert.rejects(() => createRunLayout(projectPath, 'run-ok', 'step-ok', -1), /invalid stepIndex/);
+    await assert.rejects(() => createRunLayout(projectPath, 'run-ok', 'step-ok', 1.5), /invalid stepIndex/);
+    await assert.rejects(() => createRunLayout(projectPath, 'run-ok', 'step-ok', Number.NaN), /invalid stepIndex/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('createRunLayout should preserve flow metadata while resetting step metadata', async () => {
   const projectPath = tempProjectPath();
 
   try {
@@ -76,11 +88,29 @@ test('createRunLayout should overwrite metadata files while keeping logs append-
 
     const secondLayout = await createRunLayout(projectPath, 'run-001', 'step-build', 1);
 
-    assert.equal(await readFile(secondLayout.flowRunFile, 'utf8'), '');
+    assert.equal(await readFile(secondLayout.flowRunFile, 'utf8'), 'old-flow');
     assert.equal(await readFile(secondLayout.stepRunFile, 'utf8'), '');
     assert.equal(await readFile(secondLayout.stepStatusFile, 'utf8'), '');
     assert.equal(await readFile(secondLayout.stdoutLogFile, 'utf8'), 'old-stdout');
     assert.equal(await readFile(secondLayout.stderrLogFile, 'utf8'), 'old-stderr');
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('createRunLayout should not clear flow-run.json across different steps in same run', async () => {
+  const projectPath = tempProjectPath();
+
+  try {
+    const firstLayout = await createRunLayout(projectPath, 'run-001', 'step-1', 1);
+    await writeFile(firstLayout.flowRunFile, '{"flow":"keep"}', 'utf8');
+
+    const secondLayout = await createRunLayout(projectPath, 'run-001', 'step-2', 2);
+
+    assert.equal(await readFile(secondLayout.flowRunFile, 'utf8'), '{"flow":"keep"}');
+    assert.equal(secondLayout.stepDir, join(firstLayout.runDir, 'steps', '2-step-2'));
+    await access(secondLayout.stepRunFile, constants.F_OK);
+    await access(secondLayout.stepStatusFile, constants.F_OK);
   } finally {
     await rm(projectPath, { recursive: true, force: true });
   }
