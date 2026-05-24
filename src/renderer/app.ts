@@ -211,7 +211,7 @@ function renderAgents(
     const items = agents.map((agent) => {
       const item = doc.createElement('li');
       const summary = doc.createElement('button');
-      const emoji = agent.emoji ?? '🙂';
+      const emoji = agent.emoji?.trim() ? agent.emoji.trim() : '🙂';
       summary.textContent = `${emoji} ${agent.name}`;
       summary.addEventListener('click', async () => {
         expandedAgentId = expandedAgentId === agent.id ? null : agent.id;

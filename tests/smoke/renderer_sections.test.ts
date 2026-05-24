@@ -444,3 +444,32 @@ test('initRenderer should apply fallback values in expanded agent details', asyn
   assert.equal(expanded.children[0].textContent, '🙂 NoMeta');
   assert.equal(expanded.children[2].textContent, 'emoji: 🙂 | command:  | argsTemplate: [] | env: 未设置');
 });
+
+test('initRenderer should fallback emoji in summary when emoji is empty or blank', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [
+        { id: 'agent-1', name: 'EmptyEmoji', emoji: '' },
+        { id: 'agent-2', name: 'BlankEmoji', emoji: '   ' }
+      ],
+      add: async () => ({}),
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  const list = agentRoot.children[0];
+  assert.equal(list.children[0].children[0].textContent, '🙂 EmptyEmoji');
+  assert.equal(list.children[1].children[0].textContent, '🙂 BlankEmoji');
+});
