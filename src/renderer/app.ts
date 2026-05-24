@@ -40,6 +40,10 @@ interface ProjectPathAction {
 interface AgentEntity {
   id: string;
   name: string;
+  emoji?: string;
+  command?: string;
+  argsTemplate?: string[];
+  env?: Record<string, string>;
 }
 
 interface AgentApiLike {
@@ -191,30 +195,54 @@ function bindProjectGroupHandlers(
 function renderAgents(
   doc: DocumentLike,
   root: ElementLike,
-  agents: AgentEntity[]
-): { deleteActions: { element: ElementLike; id: string }[] } {
+  agents: AgentEntity[],
+  onDelete: (id: string) => Promise<void>
+): void {
   if (agents.length === 0) {
     const empty = doc.createElement('p');
     empty.textContent = '暂无 Agent，请先新增';
     root.replaceChildren(empty);
-    return { deleteActions: [] };
+    return;
   }
 
-  const list = doc.createElement('ul');
-  const deleteActions: { element: ElementLike; id: string }[] = [];
-  const items = agents.map((agent) => {
-    const item = doc.createElement('li');
-    const label = doc.createElement('span');
-    label.textContent = `${agent.name} (${agent.id}) `;
-    const removeButton = doc.createElement('button');
-    removeButton.textContent = '删除';
-    item.replaceChildren(label, removeButton);
-    deleteActions.push({ element: removeButton, id: agent.id });
-    return item;
-  });
-  list.replaceChildren(...items);
-  root.replaceChildren(list);
-  return { deleteActions };
+  let expandedAgentId: string | null = null;
+  const renderList = (): void => {
+    const list = doc.createElement('ul');
+    const items = agents.map((agent) => {
+      const item = doc.createElement('li');
+      const summary = doc.createElement('button');
+      const emoji = agent.emoji ?? '🙂';
+      summary.textContent = `${emoji} ${agent.name}`;
+      summary.addEventListener('click', async () => {
+        expandedAgentId = expandedAgentId === agent.id ? null : agent.id;
+        renderList();
+      });
+
+      const removeButton = doc.createElement('button');
+      removeButton.textContent = '删除';
+      removeButton.addEventListener('click', async () => {
+        await onDelete(agent.id);
+      });
+
+      if (expandedAgentId === agent.id) {
+        const name = doc.createElement('p');
+        name.textContent = `name: ${agent.name}`;
+        const details = doc.createElement('p');
+        const argsTemplate = agent.argsTemplate ?? [];
+        const env = agent.env && Object.keys(agent.env).length > 0 ? JSON.stringify(agent.env) : '未设置';
+        details.textContent =
+          `emoji: ${emoji} | command: ${agent.command ?? ''} | argsTemplate: ${JSON.stringify(argsTemplate)} | env: ${env}`;
+        item.replaceChildren(summary, name, details, removeButton);
+      } else {
+        item.replaceChildren(summary, removeButton);
+      }
+      return item;
+    });
+    list.replaceChildren(...items);
+    root.replaceChildren(list);
+  };
+
+  renderList();
 }
 
 async function refreshAgents(
@@ -225,12 +253,7 @@ async function refreshAgents(
   onDelete: (id: string) => Promise<void>
 ): Promise<void> {
   const agents = await agentApi.list();
-  const rendered = renderAgents(doc, root, agents);
-  for (const action of rendered.deleteActions) {
-    action.element.addEventListener('click', async () => {
-      await onDelete(action.id);
-    });
-  }
+  renderAgents(doc, root, agents, onDelete);
   setStatus(status, '就绪');
 }
 
@@ -316,7 +339,7 @@ export async function initRenderer(
 
   if (agentRoot && agentStatus) {
     if (!api.agentApi || !agentAddButton) {
-      renderAgents(doc, agentRoot, []);
+      renderAgents(doc, agentRoot, [], async () => {});
       setStatus(agentStatus, 'Agent 功能暂不可用，请重启应用');
     } else {
       const removeAndRefresh = async (id: string): Promise<void> => {
@@ -345,7 +368,7 @@ export async function initRenderer(
       try {
         await refreshAgents(doc, agentRoot, agentStatus, api.agentApi, removeAndRefresh);
       } catch {
-        renderAgents(doc, agentRoot, []);
+        renderAgents(doc, agentRoot, [], async () => {});
         setStatus(agentStatus, '加载 Agent 列表失败');
       }
     }

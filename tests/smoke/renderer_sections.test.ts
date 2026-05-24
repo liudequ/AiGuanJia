@@ -255,14 +255,14 @@ test('initRenderer should show new agent item after add', async () => {
   doc.register('runs-list', 'ul');
   doc.register('status-text', 'p');
 
-  const agents: Array<{ id: string; name: string }> = [];
+  const agents: Array<{ id: string; name: string; emoji?: string; command?: string; argsTemplate?: string[]; env?: Record<string, string> }> = [];
   const api = {
     runFlow: async () => ({}),
     getRuns: async () => [],
     agentApi: {
       list: async () => [...agents],
       add: async () => {
-        agents.push({ id: 'agent-1', name: 'Agent 1' });
+        agents.push({ id: 'agent-1', name: 'Agent 1', emoji: '🤖', command: 'codex', argsTemplate: ['run'], env: { MODE: 'dev' } });
         return agents[0];
       },
       remove: async () => ({ ok: true })
@@ -275,7 +275,8 @@ test('initRenderer should show new agent item after add', async () => {
   assert.equal(agentRoot.children.length, 1);
   const list = agentRoot.children[0];
   assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].children[0].textContent, 'Agent 1 (agent-1) ');
+  assert.equal(list.children[0].children[0].textContent, '🤖 Agent 1');
+  assert.equal(list.children[0].children[0].textContent.includes('agent-1'), false);
   assert.equal(agentStatus.textContent, '就绪');
 });
 
@@ -288,9 +289,9 @@ test('initRenderer should reduce agent list after delete success', async () => {
   doc.register('runs-list', 'ul');
   doc.register('status-text', 'p');
 
-  const agents: Array<{ id: string; name: string }> = [
-    { id: 'agent-1', name: 'Agent 1' },
-    { id: 'agent-2', name: 'Agent 2' }
+  const agents: Array<{ id: string; name: string; emoji?: string; command?: string; argsTemplate?: string[]; env?: Record<string, string> }> = [
+    { id: 'agent-1', name: 'Agent 1', emoji: '🤖', command: 'codex', argsTemplate: ['run'], env: { MODE: 'dev' } },
+    { id: 'agent-2', name: 'Agent 2', emoji: '🧪', command: 'node', argsTemplate: ['main.js'], env: { NODE_ENV: 'test' } }
   ];
   const api = {
     runFlow: async () => ({}),
@@ -316,7 +317,7 @@ test('initRenderer should reduce agent list after delete success', async () => {
 
   const listAfter = agentRoot.children[0];
   assert.equal(listAfter.children.length, 1);
-  assert.equal(listAfter.children[0].children[0].textContent, 'Agent 2 (agent-2) ');
+  assert.equal(listAfter.children[0].children[0].textContent, '🧪 Agent 2');
   assert.equal(agentStatus.textContent, '就绪');
 });
 
@@ -333,7 +334,7 @@ test('initRenderer should show AGENT_IN_USE message when delete fails with refer
     runFlow: async () => ({}),
     getRuns: async () => [],
     agentApi: {
-      list: async () => [{ id: 'agent-1', name: 'Agent 1' }],
+      list: async () => [{ id: 'agent-1', name: 'Agent 1', emoji: '🤖', command: 'codex', argsTemplate: ['run'], env: { MODE: 'dev' } }],
       add: async () => ({}),
       remove: async () => {
         throw new Error('AGENT_IN_USE');
@@ -347,4 +348,99 @@ test('initRenderer should show AGENT_IN_USE message when delete fails with refer
   await list.children[0].children[1].click();
 
   assert.equal(agentStatus.textContent, '该 Agent 已被流程模板引用，无法删除');
+});
+
+test('initRenderer should render agent summary as emoji plus name and hide id from visible text', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [{ id: 'agent-secret', name: 'Agent One', emoji: '🚀', command: 'codex', argsTemplate: ['run'], env: { A: '1' } }],
+      add: async () => ({}),
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+
+  const list = agentRoot.children[0];
+  const first = list.children[0];
+  assert.equal(first.children[0].textContent, '🚀 Agent One');
+  for (const child of first.children) {
+    assert.equal(child.textContent.includes('agent-secret'), false);
+  }
+});
+
+test('initRenderer should expand only one agent details and hide id while showing required fields', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [
+        { id: 'agent-1', name: 'Alpha', emoji: '🤖', command: 'codex', argsTemplate: ['run', '--fast'], env: { MODE: 'dev' } },
+        { id: 'agent-2', name: 'Beta', emoji: '🧪', command: 'node', argsTemplate: ['main.js'], env: { NODE_ENV: 'test' } }
+      ],
+      add: async () => ({}),
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+  const list = agentRoot.children[0];
+  await list.children[0].children[0].click();
+  const firstAfterExpand = agentRoot.children[0].children[0];
+  assert.equal(firstAfterExpand.children.length, 4);
+  assert.equal(firstAfterExpand.children[1].textContent, 'name: Alpha');
+  assert.equal(firstAfterExpand.children[2].textContent, 'emoji: 🤖 | command: codex | argsTemplate: ["run","--fast"] | env: {"MODE":"dev"}');
+  for (const child of firstAfterExpand.children) {
+    assert.equal(child.textContent.includes('agent-1'), false);
+  }
+
+  await agentRoot.children[0].children[1].children[0].click();
+  const listAfterSecondExpand = agentRoot.children[0];
+  assert.equal(listAfterSecondExpand.children[0].children.length, 2);
+  assert.equal(listAfterSecondExpand.children[1].children.length, 4);
+});
+
+test('initRenderer should apply fallback values in expanded agent details', async () => {
+  const doc = new FakeDocument();
+  doc.register('agent-add-btn', 'button');
+  doc.register('agent-status', 'p');
+  const agentRoot = doc.register('agent-root', 'div');
+  doc.register('run-flow-btn', 'button');
+  doc.register('runs-list', 'ul');
+  doc.register('status-text', 'p');
+
+  const api = {
+    runFlow: async () => ({}),
+    getRuns: async () => [],
+    agentApi: {
+      list: async () => [{ id: 'agent-1', name: 'NoMeta', command: '', argsTemplate: [], env: {} }],
+      add: async () => ({}),
+      remove: async () => ({ ok: true })
+    }
+  };
+
+  await initRenderer(doc as never, api);
+  await agentRoot.children[0].children[0].children[0].click();
+
+  const expanded = agentRoot.children[0].children[0];
+  assert.equal(expanded.children[0].textContent, '🙂 NoMeta');
+  assert.equal(expanded.children[2].textContent, 'emoji: 🙂 | command:  | argsTemplate: [] | env: 未设置');
 });
